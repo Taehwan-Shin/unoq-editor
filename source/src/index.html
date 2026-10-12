@@ -150,7 +150,7 @@ dialog::backdrop { background: #0008; }
 dialog h2 { margin: 0 0 14px; font-size: 18px; }
 dialog label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
 dialog input, dialog select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-#new-desc { font-size: 13px; color: var(--muted); margin: 8px 0 0; min-height: 2.6em; }
+#new-desc { font-size: 13px; color: var(--muted); margin: 8px 0 0; min-height: 4.5em; white-space: pre-line; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
 dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 @media (max-width: 760px) {
@@ -233,11 +233,11 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top
 <dialog id="dlg-new">
   <form id="new-form">
     <h2>새 앱 만들기</h2>
-    <label for="new-name">앱 이름 (영어 소문자·숫자·-·_)</label>
-    <input id="new-name" placeholder="예: 3jo-bangrye" required autocomplete="off">
-    <label for="new-template">시작 코드</label>
+    <label for="new-template">차시 실습 코드</label>
     <select id="new-template"></select>
     <p id="new-desc"></p>
+    <label for="new-name">앱 이름 (영어 소문자·숫자·-·_)</label>
+    <input id="new-name" placeholder="예: 3jo-bangrye" required autocomplete="off">
     <div class="actions">
       <button type="button" id="new-cancel">취소</button>
       <button type="submit" class="primary">만들기</button>

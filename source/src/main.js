@@ -442,19 +442,43 @@ $("#btn-logs").addEventListener("click", async () => {
 // ---------- 새 앱 ----------
 const dlg = $("#dlg-new");
 const tplSel = $("#new-template");
+const groups = {};
 for (const [id, t] of Object.entries(TEMPLATES)) {
+  if (!groups[t.group]) {
+    groups[t.group] = document.createElement("optgroup");
+    groups[t.group].label = t.group;
+    tplSel.appendChild(groups[t.group]);
+  }
   const o = document.createElement("option");
   o.value = id;
   o.textContent = t.title;
-  tplSel.appendChild(o);
+  groups[t.group].appendChild(o);
 }
-tplSel.addEventListener("change", () => ($("#new-desc").textContent = TEMPLATES[tplSel.value].desc));
+
+// 차시를 고르면 앱 이름을 자동으로 채운다 (이미 있으면 -2, -3 …)
+let nameTouched = false;
+$("#new-name").addEventListener("input", () => (nameTouched = true));
+function suggestName() {
+  const slug = TEMPLATES[tplSel.value].slug;
+  if (!slug) return "";
+  let name = slug;
+  for (let i = 2; state.apps.includes(name); i++) name = `${slug}-${i}`;
+  return name;
+}
+tplSel.addEventListener("change", () => {
+  $("#new-desc").textContent = TEMPLATES[tplSel.value].desc;
+  if (!nameTouched) $("#new-name").value = suggestName();
+  store.set("unoq.lastTemplate", tplSel.value);
+});
+const lastTpl = store.get("unoq.lastTemplate", "l01");
+if (TEMPLATES[lastTpl]) tplSel.value = lastTpl;
 tplSel.dispatchEvent(new Event("change"));
 
 $("#btn-new").addEventListener("click", () => {
-  $("#new-name").value = store.get("unoq.lastPrefix", "") ;
+  nameTouched = false;
+  $("#new-name").value = suggestName();
   dlg.showModal();
-  $("#new-name").focus();
+  tplSel.focus();
 });
 $("#new-cancel").addEventListener("click", () => dlg.close());
 $("#new-form").addEventListener("submit", async (ev) => {
@@ -465,7 +489,6 @@ $("#new-form").addEventListener("submit", async (ev) => {
     return;
   }
   if (state.apps.includes(name)) { toast("같은 이름의 앱이 이미 있어요.", "error"); return; }
-  store.set("unoq.lastPrefix", name.replace(/[^-_]*$/, ""));
   dlg.close();
   setStatus("앱 만드는 중…", "busy");
   showTab("run");
