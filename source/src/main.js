@@ -40,14 +40,39 @@ const store = {
 // ---------- 셸 유틸 ----------
 const q = (s) => "'" + String(s).replace(/'/g, `'\\''`) + "'";
 
-async function sh(cmd) {
-  const out = await state.adb.subprocess.noneProtocol.spawnWaitText(`sh -c ${q(cmd + "; echo __RC=$?")}`);
-  const m = out.match(/__RC=(\d+)\s*$/);
-  return { out: m ? out.slice(0, m.index) : out, rc: m ? Number(m[1]) : -1 };
+// arduino-app-cli 는 arduino 사용자(UID 1000) + HOME 이 있어야 동작한다.
+// adb 로 띄운 셸에는 HOME/PATH 가 비어 있을 수 있으므로 직접 채워 준다.
+const ENV =
+  '[ -n "$HOME" ] || export HOME=/home/arduino; export USER="${USER:-arduino}" LOGNAME="${LOGNAME:-arduino}"; ' +
+  'export LANG="${LANG:-C.UTF-8}" PATH="$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"; ' +
+  'cd "$HOME" 2>/dev/null; ';
+
+// 보드 쪽 명령을 실행한다. onText 로 출력(stdout+stderr)을 흘려보내고, done 은 종료 코드를 준다.
+async function stream(cmd, onText) {
+  const shell = state.adb.subprocess.shellProtocol;
+  if (shell) {
+    // App Lab 의 `adb shell` 과 같은 shell v2 방식 (종료 코드를 정확히 받는다)
+    const proc = await shell.spawn(`sh -c ${q(ENV + cmd)}`);
+    const pump = async (s) => {
+      const reader = s.pipeThrough(new TextDecoderStream()).getReader();
+      try { for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) onText(value); } } catch {}
+    };
+    const done = Promise.all([pump(proc.stdout), pump(proc.stderr)]).then(() => proc.exited).catch(() => -1);
+    return { done, kill: () => { try { proc.kill(); } catch {} } };
+  }
+  return streamLegacy(cmd, onText);
 }
 
-async function stream(cmd, onText) {
-  const proc = await state.adb.subprocess.noneProtocol.spawn(`sh -c ${q(cmd + " 2>&1; __rc=$?; echo; echo __RC=$__rc")}`);
+async function sh(cmd) {
+  let out = "";
+  const p = await stream(cmd, (t) => (out += t));
+  const rc = await p.done;
+  return { out, rc };
+}
+
+// shell v2 를 지원하지 않는 adbd 용: 출력 끝에 종료 코드를 덧붙여 읽는다
+async function streamLegacy(cmd, onText) {
+  const proc = await state.adb.subprocess.noneProtocol.spawn(`sh -c ${q(ENV + cmd + " 2>&1; __rc=$?; echo; echo __RC=$__rc")}`);
   let rc = -1;
   const done = (async () => {
     const reader = proc.output.pipeThrough(new TextDecoderStream()).getReader();
@@ -118,6 +143,12 @@ function showTab(name) {
   document.querySelectorAll(".out-pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
 }
 document.querySelectorAll(".out-tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("#btn-copy").addEventListener("click", async () => {
+  // 오류 보고용: 실행 기록 + 터미널 + 모니터를 한 번에 복사
+  const text = ["[실행 기록]", outputs.run.textContent, "[터미널]", outputs.term.textContent, "[모니터]", outputs.monitor.textContent.slice(-2000)].join("\n");
+  try { await navigator.clipboard.writeText(text); toast("기록을 복사했어요. 메신저나 메일에 붙여 넣어 보내 주세요."); }
+  catch { toast("복사하지 못했어요. 기록을 드래그해서 직접 복사해 주세요.", "error"); }
+});
 $("#btn-clear").addEventListener("click", () => {
   const pane = document.querySelector(".out-pane:not([hidden]) pre");
   if (pane) pane.textContent = "";
@@ -252,9 +283,10 @@ async function connect() {
     const [uid, host] = who.out.trim().split(/\s+/);
     state.isRoot = uid === "0";
     setStatus(`연결됨 · ${host || device.name}`, "ok");
-    print("term", `# ${host} 에 연결됨 (uid=${uid})\n`, "dim");
+    print("term", `# ${host} 에 연결됨 (uid=${uid}, ${state.adb.subprocess.shellProtocol ? "shell v2" : "exec"})\n`, "dim");
     updateButtons();
     await refreshApps();
+    await checkBoard();
   } catch (e) {
     console.error(e);
     state.adb = null;
@@ -357,6 +389,29 @@ async function saveAll() {
 }
 $("#btn-save").addEventListener("click", saveAll);
 
+// 실행에 꼭 필요한 파일이 빠져 있으면 공식 템플릿 내용으로 채운다
+const DEFAULT_SKETCH_YAML = "profiles:\n  default:\n    platforms:\n      - platform: arduino:zephyr\n    libraries:\ndefault_profile: default\n";
+async function ensureSketchYaml(path) {
+  const ino = `${path}/sketch/sketch.ino`, yml = `${path}/sketch/sketch.yaml`;
+  if ((await sh(`test -f ${q(ino)} && ! test -f ${q(yml)}`)).rc === 0) {
+    await writeFile(yml, DEFAULT_SKETCH_YAML);
+    return true;
+  }
+  return false;
+}
+
+// 연결 직후 보드 프로그램이 이 방식으로 실행되는지 확인한다
+async function checkBoard() {
+  const r = await sh("arduino-app-cli version 2>&1");
+  if (r.rc === 0) {
+    print("run", `보드 프로그램 확인: ${r.out.trim().split("\n")[0]}\n`, "dim");
+    return;
+  }
+  showTab("run");
+  print("run", `✘ 보드에서 arduino-app-cli 를 실행하지 못했어요 (코드 ${r.rc}).\n${r.out}\n`, "err");
+  print("run", "  → 이 화면의 [기록 복사]를 눌러 선생님께 보내 주세요.\n", "err");
+}
+
 async function runApp() {
   if (!state.adb || !state.app) return;
   if (!(await saveAll())) return;
@@ -365,6 +420,10 @@ async function runApp() {
   stopProc("run");
   showTab("run");
   outputs.run.textContent = "";
+  if (await ensureSketchYaml(path)) {
+    await openApp(state.app.name);
+    print("run", "sketch.yaml 이 없어서 기본 설정으로 만들었어요.\n", "dim");
+  }
   print("run", `▶ ${state.app.name} 실행 준비 중… (스케치 컴파일·업로드에 30초~1분 걸릴 수 있어요)\n`, "info");
   if (state.runningPath && state.runningPath !== path) {
     await sh(`arduino-app-cli app stop ${q(state.runningPath)}`);
@@ -384,7 +443,7 @@ async function runApp() {
     setStatus(`실행 중 · ${state.app.name}`, "ok");
     startMonitor();
   } else {
-    print("run", `\n✘ 실행에 실패했어요 (코드 ${rc}). 위의 오류 줄(error:)을 확인하세요.\n`, "err");
+    print("run", `\n✘ 실행에 실패했어요 (코드 ${rc}). 위의 오류 줄(error:)을 확인하세요. 해결이 안 되면 [기록 복사]를 눌러 보내 주세요.\n`, "err");
     if (/Arduino_RouterBridge\.h.*(No such file|not found)/i.test(log)) {
       print("run", "  → sketch.yaml 에 Arduino_RouterBridge 라이브러리가 없어요. ‘sketch.yaml’ 탭의 libraries: 아래에 추가하거나, App Lab에서 이 앱에 라이브러리를 추가해 주세요.\n", "err");
     }
@@ -502,11 +561,11 @@ $("#new-form").addEventListener("submit", async (ev) => {
     folder = r.rc === 0 && latest ? latest.split("/").pop() : name;
   }
   if (r.rc !== 0) {
-    // CLI가 실패하면 최소 구조를 직접 만든다
-    await sh(`mkdir -p ${q(`${APPS_DIR}/${folder}/sketch`)} ${q(`${APPS_DIR}/${folder}/python`)}`);
-    await writeFile(`${APPS_DIR}/${folder}/app.yaml`, `name: ${name}\ndescription: ""\nports: []\nbricks: []\nicon: 📐\n`);
-    await writeFile(`${APPS_DIR}/${folder}/python/main.py`, `from arduino.app_utils import *\n\nApp.run()\n`);
+    // CLI가 실패하면 공식 템플릿과 같은 구조를 직접 만든다
+    await writeFile(`${APPS_DIR}/${folder}/app.yaml`, `name: ${name}\nicon: 📐\nports: []\nbricks: []\n`);
+    await writeFile(`${APPS_DIR}/${folder}/python/main.py`, `from arduino.app_utils import App\n\nApp.run()\n`);
   }
+  await ensureSketchYaml(`${APPS_DIR}/${folder}`);
   const tpl = TEMPLATES[tplSel.value];
   if (tpl.sketch) await writeFile(`${APPS_DIR}/${folder}/sketch/sketch.ino`, tpl.sketch);
   setStatus("연결됨", "ok");
