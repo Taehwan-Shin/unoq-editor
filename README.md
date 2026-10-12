@@ -1,0 +1,59 @@
+# UNO Q 코드 편집기 — 교사용 안내
+
+크롬북의 크롬 브라우저에서 USB-C로 연결한 **Arduino UNO Q**의 코드를 열고, 고치고, 실행하는 웹앱입니다.
+설치할 프로그램은 없고, `index.html` 파일 하나로 동작합니다.
+
+## 어떻게 동작하나요?
+UNO Q를 USB-C로 연결하면 보드 안의 리눅스(데비안)가 **ADB** 장치로 보입니다. 이 웹앱은 크롬의 **WebUSB** 기능으로 ADB에 접속해서 다음 일을 합니다.
+
+- `/home/arduino/ArduinoApps` 안의 앱 목록 보여 주기
+- 앱의 `sketch/sketch.ino`, `python/main.py`, `sketch/sketch.yaml` 열기·고치기·저장하기
+- `arduino-app-cli app start`로 실행하기(스케치를 컴파일해서 MCU에 올림), `app stop`으로 정지하기
+- `arduino-app-cli monitor`로 스케치의 `Monitor.print` 출력 보여 주기
+
+> ⚠ Arduino Cloud 웹 에디터는 UNO Q에 Web Serial로 업로드하지 않습니다. UNO Q는 App Lab 방식(앱 = 스케치 + 파이썬)으로 동작하기 때문입니다.
+
+## 1. 웹앱 올리기 (최초 1회)
+WebUSB는 **https 주소**에서만 동작합니다. 둘 중 하나를 고르세요.
+
+1. **GitHub Pages (권장)**: 저장소를 만들고 `index.html`을 올립니다. Settings → Pages에서 공개하면 `https://아이디.github.io/저장소이름/` 주소가 생깁니다. 이 주소를 구글 클래스룸에 올리세요.
+2. **파일로 열기**: `index.html`을 학생 구글 드라이브나 크롬북 '내 파일'에 내려받아 크롬으로 엽니다(`file://`도 크롬에서 보안 주소로 취급됩니다).
+
+## 2. 보드 준비 (보드당 최초 1회, 교사 PC)
+- 윈도우 PC의 **Arduino App Lab**으로 각 보드를 처음 설정하고(이름·비밀번호·업데이트), 보드 이름을 `unoq-01`, `unoq-02` 식으로 정해 두면 편합니다.
+- App Lab에서 예제 **Blink**를 한 번 실행해 보세요. 이렇게 하면 컴파일에 필요한 파일이 보드에 미리 받아져서 수업 중 첫 실행이 빨라집니다.
+
+## 3. 학생 사용 순서
+1. USB-C **데이터 케이블**로 크롬북과 UNO Q 연결 → 30초~1분 기다리기(보드 부팅)
+2. 웹앱에서 **[보드 연결]** → 팝업에서 UNO Q 선택 → [연결]
+3. 왼쪽 **[＋ 새 앱]** → 이름(예: `3jo-bangrye`) + 시작 코드 **"01차시 명제 — 반례 감지기"** 선택
+4. 코드에서 조건(`x < 15`, `x < 30`)을 고치고 **[▶ 저장 후 실행]** (Ctrl+Enter)
+5. 아래 **모니터** 탭에서 `x = 12 cm | p: 참 | q: 참` 같은 출력 확인
+
+## 4. 꼭 알아 둘 차이점 (기존 수업 자료 수정 필요)
+| 기존 UNO R3 방식 | UNO Q 방식 |
+| --- | --- |
+| `Serial.begin(9600)` | `#include <Arduino_RouterBridge.h>` + `Monitor.begin()` |
+| `Serial.print(...)` | `Monitor.print(...)` |
+| Arduino Cloud에서 업로드 | 이 웹앱(또는 App Lab)에서 **실행** |
+
+- 코드에 `Serial.print`가 있으면 편집기 위에 노란 안내가 뜨고, **[Serial → Monitor 자동 바꾸기]** 버튼으로 한 번에 바꿀 수 있습니다.
+- UNO Q의 핀은 **3.3V** 기준입니다. HC-SR04를 5V로 쓰면 Echo 신호도 5V가 됩니다. 보드 문서에서 D3 핀이 5V를 견디는지 확인하고, 아니라면 **HC-SR04P(3.3V 지원)** 모델이나 저항 분압(1kΩ/2kΩ)을 쓰세요.
+
+## 5. 문제 해결
+| 증상 | 해결 |
+| --- | --- |
+| [보드 연결] 팝업에 아무것도 없음 | 보드 부팅이 끝날 때까지 1분 기다리기, 데이터 케이블인지 확인 |
+| "보드를 다른 곳에서 쓰고 있어요" | 편집기 탭이 2개 열려 있는지 확인, 하나만 남기고 USB 다시 꽂기 |
+| 학교 관리 크롬북에서 USB 팝업이 안 뜸 | 구글 관리 콘솔에서 WebUSB가 막혀 있을 수 있음 → 정보부장/관리자에게 웹앱 주소의 WebUSB 허용 요청(`WebUsbAskForUrls` 정책) |
+| `Arduino_RouterBridge.h: No such file` | `sketch.yaml` 탭의 `libraries:` 목록에 `Arduino_RouterBridge`가 있는지 확인하거나, App Lab에서 그 앱에 라이브러리 추가 |
+| 모니터에 아무것도 안 나옴 | `Monitor.print`를 썼는지 확인하고, [모니터 연결]을 다시 누르기 |
+| 그 밖의 명령이 필요할 때 | **터미널(교사용)** 탭에서 보드 명령을 직접 실행 (예: `arduino-app-cli app list`) |
+
+## 6. 고쳐서 다시 만들려면
+`source/` 폴더에 원본이 있습니다. Node.js가 있는 PC에서 다음을 실행하면 `index.html`이 다시 만들어집니다.
+```
+cd source
+npm install
+node build.mjs ../index.html
+```

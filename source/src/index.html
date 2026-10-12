@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UNO Q 코드 편집기</title>
+<style>
+/*__CM_CSS__*/
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3e8; --text: #1b2430; --muted: #5d6b7a;
+  --accent: #00878f; --accent-ink: #ffffff; --accent-soft: #e0f3f4;
+  --ok: #1a7f37; --err: #c62828; --warn-bg: #fff6db; --warn-line: #e8c55a; --busy: #9a6700;
+  --code-bg: #ffffff; --code-gutter: #f1f3f5; --out-bg: #101820; --out-text: #d8dee6;
+  --code-size: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --panel: #161d25; --line: #2a3440; --text: #e4e9ef; --muted: #93a1b0;
+    --accent: #2bb3bb; --accent-ink: #06181a; --accent-soft: #123236;
+    --ok: #4cc26a; --err: #ff6b6b; --warn-bg: #2d2610; --warn-line: #7a6420; --busy: #e3b341;
+    --code-bg: #12181f; --code-gutter: #161d25; --out-bg: #0a0f14; --out-text: #d8dee6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --panel: #161d25; --line: #2a3440; --text: #e4e9ef; --muted: #93a1b0;
+  --accent: #2bb3bb; --accent-ink: #06181a; --accent-soft: #123236;
+  --ok: #4cc26a; --err: #ff6b6b; --warn-bg: #2d2610; --warn-line: #7a6420; --busy: #e3b341;
+  --code-bg: #12181f; --code-gutter: #161d25; --out-bg: #0a0f14; --out-text: #d8dee6;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  display: grid; grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); overflow: hidden;
+}
+button, input, select { font: inherit; color: inherit; }
+button {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+  padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 17px; margin: 0; letter-spacing: -.01em; }
+header .grow { flex: 1; }
+#status { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+#status[data-kind="ok"] { color: var(--ok); border-color: currentColor; }
+#status[data-kind="busy"] { color: var(--busy); border-color: currentColor; }
+#btn-apps { display: none; }
+
+.layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 0; }
+aside {
+  background: var(--panel); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0;
+}
+aside .head { display: flex; gap: 6px; padding: 12px; border-bottom: 1px solid var(--line); }
+aside .head button:first-child { flex: 1; }
+#app-list { list-style: none; margin: 0; padding: 8px; overflow: auto; flex: 1; }
+#app-list .empty { color: var(--muted); font-size: 13px; padding: 12px 6px; }
+.app-item {
+  width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px;
+  border-radius: 6px; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 14px;
+}
+.app-item:hover { background: var(--bg); }
+.app-item[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.app-item[data-running="true"]::after { content: " ▶"; color: var(--ok); }
+aside .foot { padding: 10px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+main { display: grid; grid-template-rows: auto auto 1fr auto; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
+.toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+#app-title { font-weight: 700; margin-right: 6px; }
+.toolbar .grow { flex: 1; }
+#btn-run { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+.files { display: flex; gap: 2px; padding: 6px 16px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.file-tab { border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; background: transparent; color: var(--muted); }
+.file-tab[aria-selected="true"] { background: var(--code-bg); border-color: var(--line); color: var(--text); font-weight: 600; margin-bottom: -1px; }
+
+.editor-wrap { position: relative; min-height: 0; display: flex; flex-direction: column; }
+#serial-hint {
+  margin: 8px 16px 0; padding: 8px 12px; border: 1px solid var(--warn-line); background: var(--warn-bg);
+  border-radius: 8px; font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+}
+#serial-hint[hidden] { display: none; }
+#editor { flex: 1; min-height: 0; }
+.CodeMirror {
+  height: 100%; font-family: ui-monospace, "Cascadia Mono", "D2Coding", Consolas, monospace;
+  font-size: var(--code-size); background: var(--code-bg); color: var(--text);
+}
+.CodeMirror-gutters { background: var(--code-gutter); border-right: 1px solid var(--line); }
+.CodeMirror-linenumber { color: var(--muted); }
+.CodeMirror-cursor { border-left-color: var(--text); }
+.CodeMirror-selected { background: var(--accent-soft) !important; }
+.CodeMirror-focused .CodeMirror-selected { background: var(--accent-soft) !important; }
+.cm-s-default .cm-keyword { color: #a626a4; } .cm-s-default .cm-def { color: #4078f2; }
+.cm-s-default .cm-variable-3, .cm-s-default .cm-type { color: #c18401; }
+.cm-s-default .cm-number { color: #986801; } .cm-s-default .cm-string { color: #50a14f; }
+.cm-s-default .cm-comment { color: #8a94a0; font-style: italic; } .cm-s-default .cm-meta { color: #00878f; }
+.cm-s-default .cm-variable { color: var(--text); } .cm-s-default .cm-builtin { color: #0184bc; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cm-s-default .cm-keyword { color: #d58cf0; }
+  :root:not([data-theme="light"]) .cm-s-default .cm-def { color: #7aa7ff; }
+  :root:not([data-theme="light"]) .cm-s-default .cm-variable-3, :root:not([data-theme="light"]) .cm-s-default .cm-type { color: #e5c07b; }
+  :root:not([data-theme="light"]) .cm-s-default .cm-number { color: #d19a66; }
+  :root:not([data-theme="light"]) .cm-s-default .cm-string { color: #98c379; }
+  :root:not([data-theme="light"]) .cm-s-default .cm-meta { color: #56d4dc; }
+  :root:not([data-theme="light"]) .cm-s-default .cm-builtin { color: #61afef; }
+  :root:not([data-theme="light"]) .CodeMirror-matchingbracket { color: #fff !important; }
+}
+
+.output { border-top: 1px solid var(--line); background: var(--out-bg); color: var(--out-text); height: 32vh; display: flex; flex-direction: column; }
+.out-bar { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid #ffffff1a; flex-wrap: wrap; }
+.out-bar button { background: transparent; border-color: transparent; color: #9fb0c0; padding: 4px 10px; font-size: 13px; }
+.out-bar button[aria-selected="true"] { background: #ffffff14; color: #fff; }
+.out-bar button.small { border-color: #ffffff2a; }
+.out-bar .grow { flex: 1; }
+.out-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.out-pane[hidden] { display: none; }
+.out-pane pre {
+  flex: 1; margin: 0; padding: 10px 14px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: 13.5px/1.5 ui-monospace, "Cascadia Mono", "D2Coding", Consolas, monospace;
+}
+pre .info { color: #7fd1d6; } pre .ok { color: #7ee08f; } pre .err { color: #ff8a8a; } pre .dim { color: #6f8090; }
+#term-form { display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid #ffffff1a; }
+#term-input { flex: 1; min-width: 0; background: #ffffff0d; border: 1px solid #ffffff2a; border-radius: 6px; padding: 6px 10px; color: #fff; font-family: ui-monospace, Consolas, monospace; }
+#term-form button { background: transparent; color: #fff; border-color: #ffffff2a; }
+
+#toast {
+  position: fixed; left: 50%; bottom: calc(32vh + 16px); transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 10px;
+  background: var(--text); color: var(--bg); box-shadow: 0 6px 24px #0003; z-index: 20; font-size: 14px;
+}
+#toast[data-kind="error"] { background: var(--err); color: #fff; }
+#nousb { margin: 12px 16px 0; padding: 10px 14px; border-radius: 8px; background: var(--warn-bg); border: 1px solid var(--warn-line); font-size: 14px; }
+
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); padding: 20px; width: min(460px, calc(100vw - 32px)); }
+dialog::backdrop { background: #0008; }
+dialog h2 { margin: 0 0 14px; font-size: 18px; }
+dialog label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+dialog input, dialog select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+#new-desc { font-size: 13px; color: var(--muted); margin: 8px 0 0; min-height: 2.6em; }
+dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+@media (max-width: 760px) {
+  #btn-apps { display: inline-block; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  aside { position: fixed; top: 0; bottom: 0; left: 0; width: min(280px, 85vw); z-index: 30; transform: translateX(-100%); transition: transform .2s; box-shadow: 0 0 30px #0005; }
+  body.sidebar-open aside { transform: none; }
+  header, .toolbar { padding: 8px 16px; }
+  .output { height: 36vh; }
+  .hide-sm { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <button id="btn-apps" aria-label="앱 목록">☰ 앱</button>
+  <h1>UNO Q 코드 편집기</h1>
+  <span id="status" data-kind="off">연결 안 됨</span>
+  <span class="grow"></span>
+  <button id="btn-font-down" title="글자 작게" aria-label="글자 작게">가−</button>
+  <button id="btn-font-up" title="글자 크게" aria-label="글자 크게">가＋</button>
+  <button id="btn-connect" class="primary">보드 연결</button>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="head">
+      <button id="btn-new" disabled>＋ 새 앱</button>
+      <button id="btn-refresh" title="목록 새로고침" aria-label="목록 새로고침" disabled>↻</button>
+    </div>
+    <ul id="app-list"><li class="empty">보드를 연결하면 보드에 저장된 앱 목록이 나타나요.</li></ul>
+    <div class="foot">보드 안의 위치: /home/arduino/ArduinoApps</div>
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <span id="app-title">앱을 골라 주세요</span>
+      <button id="btn-save" disabled title="Ctrl+S">💾 저장</button>
+      <button id="btn-run" disabled title="Ctrl+Enter">▶ 저장 후 실행</button>
+      <button id="btn-stop" disabled>■ 정지</button>
+      <span class="grow"></span>
+      <button id="btn-open-local" disabled title="크롬북에 있는 .ino / .py 파일 불러오기">📂 파일 불러오기</button>
+      <button id="btn-download" disabled class="hide-sm" title="지금 보는 파일을 크롬북에 내려받기">⬇ 내려받기</button>
+      <input type="file" id="local-file" accept=".ino,.py,.txt,.cpp,.h" hidden>
+    </div>
+    <div class="files" id="file-tabs" role="tablist"></div>
+    <div class="editor-wrap">
+      <div id="nousb" hidden>이 브라우저에서는 USB 연결(WebUSB)을 쓸 수 없어요. 크롬북의 <b>크롬 브라우저</b>에서 <b>https://</b> 주소로 열어 주세요.</div>
+      <div id="serial-hint" hidden>
+        <span>⚠ UNO Q에서는 <code>Serial.print</code>가 크롬북 화면에 보이지 않아요. <code>Monitor.print</code>를 써야 ‘모니터’ 탭에 나와요.</span>
+        <button id="btn-convert">Serial → Monitor 자동 바꾸기</button>
+      </div>
+      <div id="editor"></div>
+    </div>
+    <section class="output" aria-label="출력">
+      <div class="out-bar" role="tablist">
+        <button class="out-tab" data-tab="run">실행 기록</button>
+        <button class="out-tab" data-tab="monitor">모니터</button>
+        <button class="out-tab" data-tab="term">터미널(교사용)</button>
+        <span class="grow"></span>
+        <button id="btn-logs" class="small" disabled>앱 로그</button>
+        <button id="btn-monitor" class="small" disabled>모니터 연결</button>
+        <button id="btn-clear" class="small">지우기</button>
+      </div>
+      <div class="out-pane" data-pane="run"><pre id="out-run"></pre></div>
+      <div class="out-pane" data-pane="monitor" hidden><pre id="out-monitor"></pre></div>
+      <div class="out-pane" data-pane="term" hidden>
+        <pre id="out-term"></pre>
+        <form id="term-form">
+          <input id="term-input" placeholder="보드에서 실행할 명령 (예: arduino-app-cli app list)" autocomplete="off" disabled>
+          <button id="term-run" disabled>실행</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" hidden></div>
+
+<dialog id="dlg-new">
+  <form id="new-form">
+    <h2>새 앱 만들기</h2>
+    <label for="new-name">앱 이름 (영어 소문자·숫자·-·_)</label>
+    <input id="new-name" placeholder="예: 3jo-bangrye" required autocomplete="off">
+    <label for="new-template">시작 코드</label>
+    <select id="new-template"></select>
+    <p id="new-desc"></p>
+    <div class="actions">
+      <button type="button" id="new-cancel">취소</button>
+      <button type="submit" class="primary">만들기</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+//__APP_JS__
+</script>
+</body>
+</html>
