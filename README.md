@@ -69,6 +69,7 @@ WebUSB는 **https 주소**에서만 동작합니다. 둘 중 하나를 고르세
 | 학교 관리 크롬북에서 USB 팝업이 안 뜸 | 구글 관리 콘솔에서 WebUSB가 막혀 있을 수 있음 → 정보부장/관리자에게 웹앱 주소의 WebUSB 허용 요청(`WebUsbAskForUrls` 정책) |
 | `Arduino_RouterBridge.h: No such file` | `sketch.yaml` 탭의 `libraries:` 목록에 `Arduino_RouterBridge`가 있는지 확인하거나, App Lab에서 그 앱에 라이브러리 추가 |
 | `Library install failed ... dial tcp ... lookup downloads.arduino.cc` | 보드가 인터넷에 연결되지 않아 라이브러리(예: `ArxTypeTraits`)를 못 받은 것 → 아래 **보드 Wi-Fi 연결**을 한 번 해 주세요 |
+| `undefined reference to 'pulseIn'` | 보드 코어(0.52.x)에 `pulseIn`이 없음 → 웹앱이 같은 동작을 하는 코드를 스케치 끝에 붙일지 물어봅니다. [확인]을 누르면 자동으로 고치고 다시 실행합니다. (차시 코드는 처음부터 `pulseIn`을 쓰지 않습니다) |
 | 모니터에 아무것도 안 나옴 | `Monitor.print`를 썼는지 확인하고, [모니터 연결]을 다시 누르기 |
 | 그 밖의 명령이 필요할 때 | **터미널(교사용)** 탭에서 보드 명령을 직접 실행 (예: `arduino-app-cli app list`) |
 

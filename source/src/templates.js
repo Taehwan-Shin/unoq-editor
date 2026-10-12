@@ -7,14 +7,29 @@
 //   조이스틱 모듈  : VRx A0, VRy A1 (06차시)
 
 // 초음파 거리 측정 함수 (여러 차시에서 같이 씀)
-const DISTANCE = `// 물체와의 거리 x(cm)를 측정하는 함수 (측정 실패 시 999)
+// UNO Q 코어(0.52.x)에는 pulseIn 이 없어서 micros()로 직접 잰다.
+const DISTANCE = `// Echo 핀이 HIGH 로 유지되는 시간(마이크로초)을 잰다. 시간 초과면 0
+// (UNO Q 보드 버전에 따라 pulseIn 이 없어서 직접 만든 함수)
+unsigned long echoTime(unsigned long timeoutUs) {
+  unsigned long start = micros();
+  while (digitalRead(echoPin) == LOW) {          // 소리가 돌아오기 시작할 때까지 기다림
+    if (micros() - start > timeoutUs) return 0;
+  }
+  unsigned long t0 = micros();
+  while (digitalRead(echoPin) == HIGH) {         // 소리가 다 돌아올 때까지 시간 재기
+    if (micros() - t0 > timeoutUs) return 0;
+  }
+  return micros() - t0;
+}
+
+// 물체와의 거리 x(cm)를 측정하는 함수 (측정 실패 시 999)
 long getDistance() {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  long duration = pulseIn(echoPin, HIGH, 30000); // 30ms 동안 소리가 안 돌아오면 0
+  unsigned long duration = echoTime(30000); // 30ms 동안 소리가 안 돌아오면 0
   if (duration == 0) return 999;
   return duration * 0.034 / 2; // 음속을 이용한 거리(cm) 환산
 }`;

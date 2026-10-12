@@ -494,6 +494,36 @@ async function runApp() {
   }
   renderApps();
   updateButtons();
+  if (rc !== 0) await offerCompatFix(log);
+}
+
+// ---------- 보드 코어에 없는 함수 보완 ----------
+// UNO Q 코어 0.52.x 에는 선언만 있고 내용이 없는 함수가 있다 (링크 단계에서 undefined reference).
+// 이런 함수를 쓰는 예전 아두이노 코드도 돌아가도록, 같은 동작을 하는 정의를 스케치 끝에 붙인다.
+const COMPAT = {
+  pulseIn: `
+// ── [UNO Q 호환] 이 보드 버전에는 pulseIn 이 없어 직접 정의합니다 (웹앱이 자동 추가) ──
+unsigned long pulseIn(pin_size_t pin, uint8_t state, unsigned long timeout) {
+  unsigned long start = micros();
+  while (digitalRead(pin) == state) { if (micros() - start > timeout) return 0; } // 이전 펄스가 끝나길 기다림
+  while (digitalRead(pin) != state) { if (micros() - start > timeout) return 0; } // 펄스 시작을 기다림
+  unsigned long t0 = micros();
+  while (digitalRead(pin) == state) { if (micros() - start > timeout) return 0; } // 펄스 길이 재기
+  return micros() - t0;
+}
+`,
+};
+async function offerCompatFix(log) {
+  const missing = [...log.matchAll(/undefined reference to [`'"]?(\w+)/g)].map((m) => m[1]);
+  const doc = state.app?.docs.sketch.doc;
+  if (!doc) return;
+  const fixable = [...new Set(missing)].filter((n) => COMPAT[n] && !doc.getValue().includes(`[UNO Q 호환] 이 보드 버전에는 ${n}`));
+  if (!fixable.length) return;
+  print("run", `  → 이 보드 버전에는 ${fixable.join(", ")} 함수가 없어요. 같은 동작을 하는 코드를 스케치 끝에 붙이면 해결돼요.\n`, "err");
+  if (!confirm(`이 보드 버전에는 ${fixable.join(", ")} 함수가 없어요.\n같은 동작을 하는 코드를 스케치 맨 끝에 자동으로 붙이고 다시 실행할까요?`)) return;
+  doc.setValue(doc.getValue().replace(/\s*$/, "\n") + fixable.map((n) => COMPAT[n]).join(""));
+  if (state.active !== "sketch") switchFile("sketch");
+  await runApp();
 }
 $("#btn-run").addEventListener("click", runApp);
 
