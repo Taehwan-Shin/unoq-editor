@@ -10,6 +10,7 @@ import "codemirror/mode/yaml/yaml.js";
 import "codemirror/addon/edit/matchbrackets.js";
 import "codemirror/addon/edit/closebrackets.js";
 import { TEMPLATES } from "./templates.js";
+import { BUNDLED_LIBS } from "./bundled-libs.js";
 
 const APPS_DIR = "/home/arduino/ArduinoApps";
 const FILES = {
@@ -287,6 +288,8 @@ async function connect() {
     updateButtons();
     await refreshApps();
     await checkBoard();
+    state.libsReady = ensureLibraries();
+    await state.libsReady;
   } catch (e) {
     console.error(e);
     state.adb = null;
@@ -400,6 +403,34 @@ async function ensureSketchYaml(path) {
   return false;
 }
 
+// ---------- 오프라인 라이브러리 설치 ----------
+// 보드가 인터넷에 연결되지 않아도 컴파일되도록, Monitor(Arduino_RouterBridge)가 필요로 하는
+// 라이브러리를 arduino-cli 의 프로필 캐시 폴더에 직접 넣어 둔다.
+// 폴더 이름 규칙은 arduino-cli 의 InternalUniqueIdentifier 와 같다: 이름_버전_sha256("이름@버전") 앞 16자리
+const LIB_CACHE = "/home/arduino/.arduino15/internal";
+async function libDirName(lib) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(`${lib.name}@${lib.version}`)));
+  const hex = [...h].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  return `${lib.name}_${lib.version}_${hex}`;
+}
+async function ensureLibraries() {
+  for (const lib of BUNDLED_LIBS) {
+    const root = `${LIB_CACHE}/${await libDirName(lib)}`;
+    if ((await sh(`test -d ${q(`${root}/${lib.name}`)}`)).rc === 0) continue;
+    // 임시 폴더에 다 쓴 뒤 이름을 바꿔서, 중간에 끊겨도 반쯤 설치된 폴더가 남지 않게 한다
+    const tmp = `${root}.tmp`;
+    await sh(`rm -rf ${q(tmp)}`);
+    try {
+      for (const [rel, text] of Object.entries(lib.files)) await writeFile(`${tmp}/${lib.name}/${rel}`, text);
+      const r = await sh(`rm -rf ${q(root)} && mv ${q(tmp)} ${q(root)}`);
+      if (r.rc !== 0) throw new Error(r.out.trim());
+      print("run", `라이브러리 ${lib.name} ${lib.version} 을(를) 보드에 넣었어요 (인터넷 없이 컴파일 가능).\n`, "ok");
+    } catch (e) {
+      print("run", `라이브러리 ${lib.name} 설치 실패: ${e.message}\n`, "err");
+    }
+  }
+}
+
 // 연결 직후 보드 프로그램이 이 방식으로 실행되는지 확인한다
 async function checkBoard() {
   const r = await sh("arduino-app-cli version 2>&1");
@@ -415,6 +446,7 @@ async function checkBoard() {
 async function runApp() {
   if (!state.adb || !state.app) return;
   if (!(await saveAll())) return;
+  if (state.libsReady) await state.libsReady; // 연결 직후 라이브러리 설치가 끝날 때까지 기다림
   const path = state.app.path;
   stopProc("monitor");
   stopProc("run");
@@ -445,9 +477,10 @@ async function runApp() {
   } else {
     print("run", `\n✘ 실행에 실패했어요 (코드 ${rc}). 위의 오류 줄(error:)을 확인하세요. 해결이 안 되면 [기록 복사]를 눌러 보내 주세요.\n`, "err");
     if (/Library install failed|Error downloading|dial tcp|no such host|lookup .*(refused|timeout)/i.test(log)) {
-      print("run", "  → 보드가 인터넷에 연결되어 있지 않아 필요한 라이브러리를 받지 못했어요.\n" +
-        "    보드를 Wi-Fi에 한 번 연결해서 실행하면 라이브러리가 보드에 저장되고, 그다음부터는 인터넷 없이도 실행돼요.\n" +
-        "    (선생님: App Lab 또는 터미널 탭에서 Wi-Fi 연결 — 사용안내 참고)\n", "err");
+      const lib = (log.match(/Downloading library (\S+)/) || [])[1] || "알 수 없음";
+      print("run", `  → 보드가 인터넷에 연결되어 있지 않아 라이브러리(${lib})를 받지 못했어요.\n` +
+        "    이 웹앱에 들어 있지 않은 라이브러리예요. 보드를 Wi-Fi에 한 번 연결해서 실행하거나,\n" +
+        "    [기록 복사]로 이 기록을 보내 주시면 웹앱에 추가할게요. (사용안내 ‘보드 Wi-Fi 연결’ 참고)\n", "err");
     } else if (/Arduino_RouterBridge\.h.*(No such file|not found)/i.test(log)) {
       print("run", "  → sketch.yaml 에 Arduino_RouterBridge 라이브러리가 없어요. ‘sketch.yaml’ 탭의 libraries: 아래에 추가하거나, App Lab에서 이 앱에 라이브러리를 추가해 주세요.\n", "err");
     }
