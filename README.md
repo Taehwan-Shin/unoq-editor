@@ -68,8 +68,22 @@ WebUSB는 **https 주소**에서만 동작합니다. 둘 중 하나를 고르세
 | "보드를 다른 곳에서 쓰고 있어요" | 편집기 탭이 2개 열려 있는지 확인, 하나만 남기고 USB 다시 꽂기 |
 | 학교 관리 크롬북에서 USB 팝업이 안 뜸 | 구글 관리 콘솔에서 WebUSB가 막혀 있을 수 있음 → 정보부장/관리자에게 웹앱 주소의 WebUSB 허용 요청(`WebUsbAskForUrls` 정책) |
 | `Arduino_RouterBridge.h: No such file` | `sketch.yaml` 탭의 `libraries:` 목록에 `Arduino_RouterBridge`가 있는지 확인하거나, App Lab에서 그 앱에 라이브러리 추가 |
+| `Library install failed ... dial tcp ... lookup downloads.arduino.cc` | 보드가 인터넷에 연결되지 않아 라이브러리(예: `ArxTypeTraits`)를 못 받은 것 → 아래 **보드 Wi-Fi 연결**을 한 번 해 주세요 |
 | 모니터에 아무것도 안 나옴 | `Monitor.print`를 썼는지 확인하고, [모니터 연결]을 다시 누르기 |
 | 그 밖의 명령이 필요할 때 | **터미널(교사용)** 탭에서 보드 명령을 직접 실행 (예: `arduino-app-cli app list`) |
+
+### 보드 Wi-Fi 연결 (보드당 최초 1회)
+`Monitor`를 쓰는 코드는 처음 실행할 때 라이브러리를 인터넷에서 받아 보드에 저장합니다. 한 번 받아 두면 그다음부터는 인터넷이 없어도 됩니다.
+
+- **방법 1 (App Lab):** 윈도우 PC의 App Lab에서 보드를 연결하고 네트워크 설정에서 Wi-Fi를 연결합니다.
+- **방법 2 (이 웹앱의 터미널 탭):**
+  ```
+  nmcli device wifi list
+  nmcli device wifi connect "와이파이이름" password "비밀번호"
+  ```
+  권한 오류가 나면 앞에 `sudo `를 붙이세요(보드 비밀번호 필요). 학교 Wi-Fi가 웹 로그인(인증 페이지) 방식이면 보드가 연결할 수 없으니, 교무실 Wi-Fi나 휴대폰 핫스팟을 쓰세요.
+- 연결한 뒤 아무 차시 코드나 한 번 **[▶ 저장 후 실행]** 하면 라이브러리가 저장됩니다.
+- 확인: 터미널 탭에서 `ls ~/.arduino15/internal` 을 실행해 `ArxTypeTraits_…` 폴더가 있으면 준비 완료입니다.
 
 ## 6. 고쳐서 다시 만들려면
 `source/` 폴더에 원본이 있습니다. Node.js가 있는 PC에서 다음을 실행하면 `index.html`이 다시 만들어집니다.

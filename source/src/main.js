@@ -444,7 +444,11 @@ async function runApp() {
     startMonitor();
   } else {
     print("run", `\n✘ 실행에 실패했어요 (코드 ${rc}). 위의 오류 줄(error:)을 확인하세요. 해결이 안 되면 [기록 복사]를 눌러 보내 주세요.\n`, "err");
-    if (/Arduino_RouterBridge\.h.*(No such file|not found)/i.test(log)) {
+    if (/Library install failed|Error downloading|dial tcp|no such host|lookup .*(refused|timeout)/i.test(log)) {
+      print("run", "  → 보드가 인터넷에 연결되어 있지 않아 필요한 라이브러리를 받지 못했어요.\n" +
+        "    보드를 Wi-Fi에 한 번 연결해서 실행하면 라이브러리가 보드에 저장되고, 그다음부터는 인터넷 없이도 실행돼요.\n" +
+        "    (선생님: App Lab 또는 터미널 탭에서 Wi-Fi 연결 — 사용안내 참고)\n", "err");
+    } else if (/Arduino_RouterBridge\.h.*(No such file|not found)/i.test(log)) {
       print("run", "  → sketch.yaml 에 Arduino_RouterBridge 라이브러리가 없어요. ‘sketch.yaml’ 탭의 libraries: 아래에 추가하거나, App Lab에서 이 앱에 라이브러리를 추가해 주세요.\n", "err");
     }
     state.runningPath = null;
