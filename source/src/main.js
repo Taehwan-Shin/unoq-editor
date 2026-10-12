@@ -41,19 +41,24 @@ const store = {
 // ---------- 셸 유틸 ----------
 const q = (s) => "'" + String(s).replace(/'/g, `'\\''`) + "'";
 
-// arduino-app-cli 는 arduino 사용자(UID 1000) + HOME 이 있어야 동작한다.
-// adb 로 띄운 셸에는 HOME/PATH 가 비어 있을 수 있으므로 직접 채워 준다.
-const ENV =
-  '[ -n "$HOME" ] || export HOME=/home/arduino; export USER="${USER:-arduino}" LOGNAME="${LOGNAME:-arduino}"; ' +
-  'export LANG="${LANG:-C.UTF-8}" PATH="$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"; ' +
-  'cd "$HOME" 2>/dev/null; ';
+// 보드의 adbd 는 안드로이드용을 옮겨 온 것이라 셸에 안드로이드식 환경변수(TMPDIR=/data/local/tmp 등)를 넣는다.
+// arduino-app-cli 가 그 값을 쓰다 실패하므로, 환경변수를 모두 지우고(env -i)
+// 보드에 로그인했을 때와 같은 깨끗한 환경을 만들어 명령을 실행한다.
+function withLoginEnv(cmd) {
+  return (
+    'u="$(id -un 2>/dev/null || echo arduino)"; h="$(getent passwd "$u" 2>/dev/null | cut -d: -f6)"; h="${h:-/home/arduino}"; ' +
+    'exec env -i HOME="$h" USER="$u" LOGNAME="$u" SHELL=/bin/sh LANG=C.UTF-8 TERM=dumb TMPDIR=/tmp ' +
+    'XDG_RUNTIME_DIR="/run/user/$(id -u)" PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ' +
+    `sh -c ${q('cd "$HOME" 2>/dev/null; ' + cmd)}`
+  );
+}
 
 // 보드 쪽 명령을 실행한다. onText 로 출력(stdout+stderr)을 흘려보내고, done 은 종료 코드를 준다.
 async function stream(cmd, onText) {
   const shell = state.adb.subprocess.shellProtocol;
   if (shell) {
     // App Lab 의 `adb shell` 과 같은 shell v2 방식 (종료 코드를 정확히 받는다)
-    const proc = await shell.spawn(`sh -c ${q(ENV + cmd)}`);
+    const proc = await shell.spawn(`sh -c ${q(withLoginEnv(cmd))}`);
     const pump = async (s) => {
       const reader = s.pipeThrough(new TextDecoderStream()).getReader();
       try { for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) onText(value); } } catch {}
@@ -73,7 +78,7 @@ async function sh(cmd) {
 
 // shell v2 를 지원하지 않는 adbd 용: 출력 끝에 종료 코드를 덧붙여 읽는다
 async function streamLegacy(cmd, onText) {
-  const proc = await state.adb.subprocess.noneProtocol.spawn(`sh -c ${q(ENV + cmd + " 2>&1; __rc=$?; echo; echo __RC=$__rc")}`);
+  const proc = await state.adb.subprocess.noneProtocol.spawn(`sh -c ${q(withLoginEnv(cmd + " 2>&1; __rc=$?; echo; echo __RC=$__rc"))}`);
   let rc = -1;
   const done = (async () => {
     const reader = proc.output.pipeThrough(new TextDecoderStream()).getReader();
