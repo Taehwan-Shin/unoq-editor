@@ -11,6 +11,7 @@ import "codemirror/addon/edit/matchbrackets.js";
 import "codemirror/addon/edit/closebrackets.js";
 import { TEMPLATES } from "./templates.js";
 import { BUNDLED_LIBS } from "./bundled-libs.js";
+import { createMathView, lessonOf } from "./viz.js";
 
 const APPS_DIR = "/home/arduino/ArduinoApps";
 const FILES = {
@@ -159,6 +160,31 @@ $("#btn-clear").addEventListener("click", () => {
   const pane = document.querySelector(".out-pane:not([hidden]) pre");
   if (pane) pane.textContent = "";
 });
+
+// ---------- 📐 수학 화면 ----------
+const mathView = createMathView($("#m-body"), store);
+function setMath(open) {
+  document.body.classList.toggle("math-open", open);
+  $("#btn-math").setAttribute("aria-pressed", open);
+  store.set("unoq.mathOpen", open);
+  setTimeout(() => editor.refresh(), 0);
+}
+$("#btn-math").addEventListener("click", () => setMath(!document.body.classList.contains("math-open")));
+$("#m-close").addEventListener("click", () => setMath(false));
+
+// 모니터 출력은 줄 단위로 나눠서, '@' 줄은 수학 화면으로 보내고 나머지만 모니터 탭에 보인다
+let monitorBuf = "";
+function feedMonitor(text) {
+  monitorBuf += text;
+  const lines = monitorBuf.split("\n");
+  monitorBuf = lines.pop();
+  const shown = [];
+  for (const line of lines) {
+    mathView.feedLine(line);
+    if (!line.trimStart().startsWith("@")) shown.push(line);
+  }
+  if (shown.length) print("monitor", shown.join("\n") + "\n");
+}
 
 function toast(msg, kind = "info") {
   const t = $("#toast");
@@ -367,6 +393,9 @@ async function openApp(name) {
     docs[key] = { doc: CodeMirror.Doc(text, f.mode), original: text, exists };
   }
   state.app = { name, path, docs };
+  const lesson = lessonOf(docs.sketch.doc.getValue());
+  mathView.setApp(name, lesson);
+  if (lesson) setMath(store.get("unoq.mathOpen", true));
   $("#app-title").textContent = name;
   switchFile(docs.sketch.exists || !docs.python.exists ? "sketch" : "python");
   renderApps();
@@ -461,6 +490,8 @@ async function runApp() {
     await openApp(state.app.name);
     print("run", "sketch.yaml 이 없어서 기본 설정으로 만들었어요.\n", "dim");
   }
+  mathView.newRun();
+  if (lessonOf(state.app.docs.sketch.doc.getValue())) setMath(true);
   print("run", `▶ ${state.app.name} 실행 준비 중… (스케치 컴파일·업로드에 30초~1분 걸릴 수 있어요)\n`, "info");
   if (state.runningPath && state.runningPath !== path) {
     await sh(`arduino-app-cli app stop ${q(state.runningPath)}`);
@@ -476,8 +507,9 @@ async function runApp() {
   state.procs.run = null;
   if (!state.adb || state.runningPath !== path) return; // 도중에 정지됨
   if (rc === 0) {
-    print("run", `\n✔ 실행 중입니다. ‘모니터’ 탭에서 보드가 보내는 글자를 볼 수 있어요.\n`, "ok");
+    print("run", `\n✔ 실행 중입니다. 오른쪽 ‘📐 수학 화면’에 결과 그림이, ‘모니터’ 탭에 보드가 보내는 글자가 나와요.\n`, "ok");
     setStatus(`실행 중 · ${state.app.name}`, "ok");
+    mathView.setPhase("running");
     startMonitor();
   } else {
     print("run", `\n✘ 실행에 실패했어요 (코드 ${rc}). 위의 오류 줄(error:)을 확인하세요. 해결이 안 되면 [기록 복사]를 눌러 보내 주세요.\n`, "err");
@@ -491,6 +523,7 @@ async function runApp() {
     }
     state.runningPath = null;
     setStatus("연결됨", "ok");
+    mathView.setPhase("failed");
   }
   renderApps();
   updateButtons();
@@ -534,6 +567,7 @@ async function stopApp() {
   stopProc("run");
   const r = await sh(`arduino-app-cli app stop ${q(state.runningPath)} 2>&1`);
   print("run", `■ 정지했어요.\n${r.out}`, "info");
+  mathView.setPhase("idle");
   state.runningPath = null;
   setStatus("연결됨", "ok");
   renderApps();
@@ -549,7 +583,8 @@ async function startMonitor() {
   if (!state.adb) return;
   stopProc("monitor");
   print("monitor", "── 모니터 연결 ──\n", "dim");
-  const p = await stream("arduino-app-cli monitor", (t) => print("monitor", t));
+  monitorBuf = "";
+  const p = await stream("arduino-app-cli monitor", feedMonitor);
   state.procs.monitor = p;
   $("#btn-monitor").textContent = "모니터 끊기";
   p.done.then(() => {
